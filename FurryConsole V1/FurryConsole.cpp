@@ -61,7 +61,7 @@ void srs(){//初始化随机数种子
 
 template<typename T>
 constexpr const T& clamp(const T& x,const T& mi,const T& ma){//收斂函數
-	return(x<mi?mi:(x>ma?ma:x));
+	return x<mi?mi:(x>ma?ma:x);
 }
 
 template<typename T>
@@ -83,7 +83,7 @@ template<typename T1,typename T2>
 ostream& operator<<(ostream& os, const map<T1,T2>& mp){
 	bool pd=false;
 	os<<"{";
-	for(typename map<T1, T2>::const_iterator it = mp.begin();it!=mp.end();os<<it->first<<":"<<it->second,++it,pd=true)if(pd)os<<",";
+	for(typename map<T1,T2>::const_iterator it=mp.begin();it!=mp.end();os<<it->first<<":"<<it->second,++it,pd=true)if(pd)os<<",";
 	os<<"}";
 	return os;
 }
@@ -273,8 +273,9 @@ public://公共
 				while(posLegal(p)&&pxsim(special,screen[p.x][p.y])){
 					if(pxdif(tempScreen[p.x][p.y],screen[p.x][p.y]))out+=undout+pushPxChar(screen[p.x][p.y]),y+=undout.size()+1,undout="";
 					else undout+=pushPxChar(screen[p.x][p.y]);
-					tempScreen[p.x][p.y]=screen[p.x][p.y],special=pxspecial(special,screen[p.x][p.y]),addpos(p);
-					if(p.y==0)out+="\n",++x,y=0,undout="";
+					tempScreen[p.x][p.y]=screen[p.x][p.y],special=pxspecial(special,screen[p.x][p.y]);
+					int line=addpos(p);
+					if(line>0)out+=string("\n")*line,x+=line,y=0,undout="";
 				}
 				if(xrzz.x!=temppos.x||xrzz.y!=temppos.y)setArrayPosition(temppos.x,temppos.y);
 				if(xrzz.charColor!=special.charColor||xrzz.backColor!=special.backColor)color_print(special.charColor,special.backColor);
@@ -292,10 +293,10 @@ private://内部使用
 	}
 
 	int addpos(pos& p){
-		for(int i=p.x;i<screen.size();++i){
+		for(int i=p.x,x=p.x;i<screen.size();++i){
 			for(int j=(i==p.x?p.y+1:0);j<screen[i].size();++j){
 				p={i,j};
-				return i-p.x;
+				return i-x;
 			}
 		}
 		p={-1,-1};
@@ -431,7 +432,7 @@ long long cbdhs(int cmin=0,int cmax=0){//字符波动函数
 }
 
 void randomxg(){//随机初始化测试 
-	const int csys=2;//测试模式 
+	const int csys=1;//测试模式 
 	if(csys==1){//自定义波动测试
 		cons.setPosition();
 		int cc=7,bc=0;
@@ -465,7 +466,7 @@ void cs6(){//跑分测试
 	Sleep(1000);
 	
 	vector<long long>xrtime,xrProtime;
-	int n=50;
+	int n=100;
 	
 	system("cls");
 	cons.init();
@@ -511,9 +512,34 @@ void cs7(){
 	cons.xrPro();
 }
 
+void cs8(){
+	Sleep(1000);
+	cons.setPosition();
+	cons.colorAtion(7,0);
+	for(int i=0;i<N;++i){
+		for(int j=0;j<M;++j){
+			cons<<"1";
+		}
+		cons<<"\n";
+	}
+	cons.xrPro();
+	Sleep(1000);
+	cons.setPosition();
+	cons.colorAtion(7,0);
+	for(int i=0;i<N;++i){
+		for(int j=0;j<M;++j){
+			if(j==0||j==M-1)cons.colorAtion(7,1);
+			else cons.colorAtion(7,0);
+			cons<<"1";
+		}
+		cons<<"\n";
+	}
+	cons.xrPro();
+}
+
 int main(){
 	//cons.calibrateTabWidth();
-	cs2();
+	cs6();
 	system("pause");
 	return 0;
 }
