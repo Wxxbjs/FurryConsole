@@ -2,7 +2,7 @@
 
 在保留算法的同时引入动态数组
 
-提供Windows系统API渲染方式（xrPro） 和 终端转义（xrPlus）两种渲染方式的优化版本
+提供 调用Windows系统API（xrPro） 和 终端转义（xrPlus） 两种渲染方式的优化版本
 
 # 1. xrPro的核心算法
 
