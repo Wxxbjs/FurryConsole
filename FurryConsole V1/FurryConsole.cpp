@@ -182,7 +182,7 @@ public://公共
 	private://私用变量，不然会被外部修改导致错误
 		bool pd=false;//启用状态
 		int max_x=-1,min_x=-1,max_y=-1,min_y=-1;//边缘位置
-	}changeZone;
+	};
 
 	//API指令区
 	struct colorAtionCmd{//着色指令
@@ -302,7 +302,6 @@ public://公共
 	//终端渲染器函数（极简且效率最快，但要注意兼容性）
 	void xrPlus(){
 		if(!changeZone.enable())return;
-		setArrayPosition();
 		string out="";
 		pxChar temp={'\0',7,0};
 		for(int i=changeZone.minX();i<=changeZone.maxX();++i){
@@ -313,11 +312,14 @@ public://公共
 			out+="\n";
 		}
 		out+=color_str();
+		setArrayPosition(changeZone.minX());
 		cout<<out;
 		changeZone.clean();
 	}
 
 private://内部使用
+	region changeZone;
+
 	pos firstpos(){
 		for(int i=changeZone.minX();i<=changeZone.maxX();++i)if(screen[i].size())return{i,0};
 		return{-1,-1};
