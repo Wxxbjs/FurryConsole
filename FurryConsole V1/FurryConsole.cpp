@@ -6,10 +6,16 @@ using std::cin;
 using std::min;
 using std::max;
 using std::string;
+using std::to_string;
 using std::ostream;
 using std::vector;
 using std::map;
 using std::stringstream;
+
+//系统常数定义
+#ifndef ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
+#endif
 
 //全局函数区 
 void setCursorPosition(int x=0,int y=0){//设置系统光标位置
@@ -80,12 +86,22 @@ ostream& operator<<(ostream& os,const vector<T>& v){//vector输出重载;
 }
 
 template<typename T1,typename T2>
-ostream& operator<<(ostream& os, const map<T1,T2>& mp){
+ostream& operator<<(ostream& os,const map<T1,T2>& mp){//map输出重载
 	bool pd=false;
 	os<<"{";
 	for(typename map<T1,T2>::const_iterator it=mp.begin();it!=mp.end();os<<it->first<<":"<<it->second,++it,pd=true)if(pd)os<<",";
 	os<<"}";
 	return os;
+}
+
+int color_term_convert(int color){
+	color&=0xF;
+	return(color>>2&0b1)|(color&0b1010)|(color&0b1)<<2;
+}
+
+string color_str(int char_color=7,int back_color=0){//返回颜色的终端转义字符串
+	char_color&=0xF,back_color&=0xF;
+	return"\033["+to_string(3+6*(char_color>>3))+to_string(color_term_convert(char_color&0x7))+";"+to_string(4+6*(back_color>>3))+to_string(color_term_convert(back_color&0x7))+"m";
 }
 
 /*
@@ -113,6 +129,16 @@ public://公共
 		hidden();
 		cursorPointer={0,0,7,0};
 		cls(false);
+		enableAnsiSupport();
+	}
+
+	void enableAnsiSupport(){
+		HANDLE hOut=GetStdHandle(STD_OUTPUT_HANDLE);
+		if(hOut!=INVALID_HANDLE_VALUE){
+			DWORD mode;
+			GetConsoleMode(hOut,&mode);
+			SetConsoleMode(hOut,mode|ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+		}
 	}
 	
 	FurryConsole(int reserveN=0,int reserveM=0){//创建初始化
@@ -136,8 +162,30 @@ public://公共
 		int x,y,charColor,backColor;
 	}cursorPointer;
 
+	struct pos{//位置
+		int x,y;
+	};
+
+	class region{//区域（用于维护变化的区域）
+	public:
+		void push(const pos& p){//针对添加的坐标进行扩容
+			if(pd)max_x=max(max_x,p.x),min_x=min(min_x,p.x),max_y=max(max_y,p.y),min_y=min(min_y,p.y);
+			else min_x=max_x=p.x,max_y=min_y=p.y;
+			pd=true;
+		}
+		void clean(){min_x=max_x=max_y=min_y=~(pd=false);}
+		int maxX()const{return max_x;}
+		int minX()const{return min_x;}
+		int maxY()const{return max_y;}
+		int minY()const{return min_y;}
+		bool enable()const{return pd;}
+	private://私用变量，不然会被外部修改导致错误
+		bool pd=false;//启用状态
+		int max_x=-1,min_x=-1,max_y=-1,min_y=-1;//边缘位置
+	}changeZone;
+
 	//API指令区
-	struct colorAtionCmd{//变色指令
+	struct colorAtionCmd{//着色指令
 		int charColor,backColor;
 	};
 
@@ -146,52 +194,7 @@ public://公共
 	};
 	
 	//关键函数：类的实际作用与外部交互的函数
-
-	//渲染器函数（静态数组版）
-	/*
-	void xrPro(){//正在维护的渲染器 
-		cursor tempCursor={0,0,7,0},xrzz=tempCursor;
-		string outstr="";
-		pxChar* ts=&tempScreen[0][0];
-		pxChar* s=&screen[0][0];
-		setArrayPosition();
-		color_print();
-		for(int i=0;i<N*M;){
-			if(pxdif(*ts,*s)){//如果与旧像素的不一样 
-				outstr="",tempCursor={i/M,i%M,(*s).charColor,(*s).backColor};//设置起始渲染状态 
-				int xrzzx=xrzz.x,xrzzy=xrzz.y;//分离x、y更新 
-				while(i<N*M&&pxsim({'\0',tempCursor.charColor,tempCursor.backColor},*s)
-					//下面的注释可选，一般看情况 
-					//&&pxdif(*ts,*s)
-					){//维护outstr的输出单调性
-					outstr+=(*s).charColor==(*s).backColor?' ':(*s).c;//拼接 
-					if(i%M==M-1)outstr+="\n",++xrzzx,xrzzy=0;//换行的情况 
-					else ++xrzzy;//一般的情况
-					*ts=*s,++i,++ts,++s;//自增 
-				}
-				if(xrzz.x!=tempCursor.x||xrzz.y!=tempCursor.y)setArrayPosition(tempCursor.x,tempCursor.y);//调整光标位置（如果与原位置相同则不调用系统级别的API） 
-				if(xrzz.charColor!=tempCursor.charColor||xrzz.backColor!=tempCursor.backColor)color_print(tempCursor.charColor,tempCursor.backColor);//调整输出颜色（如果与原位置相同则不调用系统级别的API） 
-				cout<<outstr;//输出单调性字符串 
-				xrzz={xrzzx,xrzzy,tempCursor.charColor,tempCursor.backColor};//更新输出完后光标信息 
-			}
-			else ++i,++ts,++s;//自增 
-		}
-	}
-	*/
-
-	void xr(){//老一套的无脑渲染器，多用作跑分比较
-		setArrayPosition();
-		for(int i=0;i<screen.size();++i){
-			for(int j=0;j<screen[i].size();++j){
-				color_print(screen[i][j].charColor,screen[i][j].backColor);
-				cout<<screen[i][j].c;
-			}
-			cout<<"\n";
-		}
-		tempScreen=screen;
-	}
-
-	void testCout(){
+	void testCout(){//调试信息函数
 		system("cls");
 		color_print();
 		for(int i=0;i<screen.size();++i){
@@ -257,44 +260,72 @@ public://公共
 		return *this;
 	}
 	
-	struct pos{
-		int x,y;
-	};
-
 	//渲染器函数（动态数组版）
-	void xrPro(){//正在维护的渲染器
-		cursor xrzz={-1,-1,-1,-1};//光标指针
-		for(pos p=firstpos();posLegal(p);){
-			if(pxdif(tempScreen[p.x][p.y],screen[p.x][p.y])){
-				string out="",undout="";
-				pxChar special=screen[p.x][p.y];
-				pos temppos=p;
-				int x=p.x,y=p.y;
-				while(posLegal(p)&&pxsim(special,screen[p.x][p.y])){
-					if(pxdif(tempScreen[p.x][p.y],screen[p.x][p.y]))out+=undout+pushPxChar(screen[p.x][p.y]),y+=undout.size()+1,undout="";
-					else undout+=pushPxChar(screen[p.x][p.y]);
-					tempScreen[p.x][p.y]=screen[p.x][p.y],special=pxspecial(special,screen[p.x][p.y]);
-					int line=addpos(p);
-					if(line>0)out+=string("\n")*line,x+=line,y=0,undout="";
-				}
-				if(xrzz.x!=temppos.x||xrzz.y!=temppos.y)setArrayPosition(temppos.x,temppos.y);
-				if(xrzz.charColor!=special.charColor||xrzz.backColor!=special.backColor)color_print(special.charColor,special.backColor);
-				cout<<out,xrzz={x,y,special.charColor,special.backColor};
-			}
-			else addpos(p);
+	//暴力渲染器函数
+	void xr(){//老一套的无脑渲染器，多用作跑分比较
+		if(!changeZone.enable())return;
+		setArrayPosition();
+		for(int i=changeZone.minX();i<=changeZone.maxX();++i){
+			for(int j=0;j<=min((long long)screen[i].size()-1,(long long)changeZone.maxY());++j)color_print(screen[i][j].charColor,screen[i][j].backColor),cout<<screen[i][j].c;
+			cout<<"\n";
 		}
+		tempScreen=screen;
+		changeZone.clean();
+	}
+
+	//API调用优化渲染器函数
+	void xrPro(){//正在维护的渲染器（面向全用户的兼容性渲染优化函数）
+		if(!changeZone.enable())return;
+		cursor xrzz={-1,-1,-1,-1};//光标指针
+		for(pos p=firstpos();posLegal(p);){//枚举每一个位置
+			if(pxdif(tempScreen[p.x][p.y],screen[p.x][p.y])){//如果与旧像素不相似
+				string out="",undout="";//out:输出字符串 undout:预备字符串
+				pxChar special=screen[p.x][p.y];//代表性像素
+				pos temppos=p;//记录起始位置
+				int x=p.x,y=p.y;//手动计算渲染后的位置
+				while(posLegal(p)&&pxsim(special,screen[p.x][p.y])){//合法且与代表性像素相似
+					if(pxdif(tempScreen[p.x][p.y],screen[p.x][p.y]))out+=undout+pushPxChar(screen[p.x][p.y]),y+=undout.size()+1,undout="";//如果与旧像素不同，连接预备字符串和当前字符到输出
+					else undout+=pushPxChar(screen[p.x][p.y]);//连接预备字符串
+					tempScreen[p.x][p.y]=screen[p.x][p.y],special=pxspecial(special,screen[p.x][p.y]);//更新信息
+					int line=addpos(p);//累加，同时计算跳过的行数
+					if(line>0)out+=string("\n")*line,x+=line,y=0,undout="";//有跳过的行，直接连接
+				}
+				if(xrzz.x!=temppos.x||xrzz.y!=temppos.y)setArrayPosition(temppos.x,temppos.y);//移到指定位置（小优化）
+				if(xrzz.charColor!=special.charColor||xrzz.backColor!=special.backColor)color_print(special.charColor,special.backColor);//设置颜色（小优化）
+				cout<<out,xrzz={x,y,special.charColor,special.backColor};//输出，同时光标指针更新
+			}
+			else addpos(p);//迭代
+		}
+		changeZone.clean();
+	}
+
+	//终端渲染器函数（极简且效率最快，但要注意兼容性）
+	void xrPlus(){
+		if(!changeZone.enable())return;
+		setArrayPosition();
+		string out="";
+		pxChar temp={'\0',7,0};
+		for(int i=changeZone.minX();i<=changeZone.maxX();++i){
+			for(int j=0;j<=min((long long)screen[i].size()-1,(long long)changeZone.maxY());++j){
+				if(temp.charColor!=screen[i][j].charColor||temp.backColor!=screen[i][j].backColor)out+=color_str(screen[i][j].charColor,screen[i][j].backColor),temp=screen[i][j];
+				out+=pushPxChar(screen[i][j]);
+			}
+			out+="\n";
+		}
+		out+=color_str();
+		cout<<out;
+		changeZone.clean();
 	}
 
 private://内部使用
-
 	pos firstpos(){
-		for(int i=0;i<screen.size();++i)if(screen[i].size())return{i,0};
+		for(int i=changeZone.minX();i<=changeZone.maxX();++i)if(screen[i].size())return{i,0};
 		return{-1,-1};
 	}
 
 	int addpos(pos& p){
-		for(int i=p.x,x=p.x;i<screen.size();++i){
-			for(int j=(i==p.x?p.y+1:0);j<screen[i].size();++j){
+		for(int i=p.x,x=p.x;i<=changeZone.maxX();++i){
+			for(int j=(i==p.x?p.y+1:0);j<=min((long long)screen[i].size()-1,(long long)changeZone.maxY());++j){
 				p={i,j};
 				return i-x;
 			}
@@ -304,7 +335,7 @@ private://内部使用
 	}
 	
 	bool posLegal(const pos& p){//合法函数
-		return p.x>=0&&p.y>=0&&p.x<screen.size()&&p.y<screen[p.x].size();
+		return p.x>=0&&p.y>=0&&p.x<screen.size()&&p.y<screen[p.x].size()&&(!changeZone.enable()||p.x>=changeZone.minX()&&p.y>=changeZone.minY()&&p.x<=changeZone.maxX()&&p.y<=changeZone.maxY());
 	}
 
 	char pushPxChar(const pxChar& px){
@@ -319,6 +350,7 @@ private://内部使用
 	//核心功能区
 	void setPx(int x,int y,char c){//修改指定位置的字符
 		screen[x][y]={c,cursorPointer.charColor,cursorPointer.backColor};
+		changeZone.push({x,y});
 	}
 	
 	bool pxdif(const pxChar& a,const pxChar& b){//相差函数，一般用于比较旧像素与新像素 
@@ -347,7 +379,7 @@ private://内部使用
 		}
 		strs.push_back(t);
 
-		if(screen.size()<=cursorPointer.x+strs.size()-1){
+		if(screen.size()<cursorPointer.x+strs.size()){
 			screen.resize(cursorPointer.x+strs.size(),vector<pxChar>{});
 			tempScreen.resize(screen.size(),vector<pxChar>{});
 		}
@@ -379,8 +411,8 @@ void cs1(){
 }
 
 void cs2(){
-	for(int i=1;i<=10000;++i)cons<<i<<"\n";
-	cons.xrPro();
+	for(int i=1000;i<=8000;++i)cons<<i<<"\n";
+	cons.xrPlus();
 }
 
 void cs3(){
@@ -432,7 +464,7 @@ long long cbdhs(int cmin=0,int cmax=0){//字符波动函数
 }
 
 void randomxg(){//随机初始化测试 
-	const int csys=1;//测试模式 
+	const int csys=2;//测试模式 
 	if(csys==1){//自定义波动测试
 		cons.setPosition();
 		int cc=7,bc=0;
@@ -465,7 +497,7 @@ void cs6(){//跑分测试
 
 	Sleep(1000);
 	
-	vector<long long>xrtime,xrProtime;
+	vector<long long>xrtime,xrProtime,xrPlustime;
 	int n=100;
 	
 	system("cls");
@@ -477,6 +509,7 @@ void cs6(){//跑分测试
 		long long e=GetTickCount();
 		xrtime.push_back(e-s);
 	}
+	
 	system("cls");
 	cons.init();
 	for(int i=1;i<=n;++i){
@@ -487,18 +520,30 @@ void cs6(){//跑分测试
 		xrProtime.push_back(e-s);
 	}
 	
+	system("cls");
+	cons.init();
+	for(int i=1;i<=n;++i){
+		randomxg();
+		long long s=GetTickCount();
+		cons.xrPlus();
+		long long e=GetTickCount();
+		xrPlustime.push_back(e-s);
+	}
+	
 	//平均值统计 
-	long long xrans=0,xrProans=0;
+	long long xrans=0,xrProans=0,xrPlusans=0;
 	
 	for(int i=0;i<n;++i){
 		xrans+=xrtime[i];
 		xrProans+=xrProtime[i];
+		xrPlusans+=xrPlustime[i];
 	}
 	
 	setCursorPosition(0,N);
 	color_print();
 	printf("xr:%.3lf\n",1.0*xrans/n/1000);
 	printf("xrPro:%.3lf\n",1.0*xrProans/n/1000);
+	printf("xrPlus:%.3lf\n",1.0*xrPlusans/n/1000);
 }
 
 void cs7(){
@@ -539,7 +584,48 @@ void cs8(){
 
 int main(){
 	//cons.calibrateTabWidth();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs1();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs2();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs3();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs4();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs5();
+
+	system("pause");
+	color_print();
+	cons.cls();
 	cs6();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs7();
+
+	system("pause");
+	color_print();
+	cons.cls();
+	cs8();
+
+	//cout<<color_str(7,0);
 	system("pause");
 	return 0;
 }
